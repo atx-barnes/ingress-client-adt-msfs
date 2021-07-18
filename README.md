@@ -1,1 +1,1 @@
-# Ingress Client for 5G Enabled Immersive Digital Twin Research
+# Ingress Client for 5G Enabled Immersive Digital Twin
