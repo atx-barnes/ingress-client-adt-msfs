@@ -24,11 +24,11 @@ namespace IngressClientADT
         static void Main(string[] args)
         {
             //MicrosoftFlightSimulatorDigitalTwinIngressControlller digitalTwinController = new MicrosoftFlightSimulatorDigitalTwinIngressControlller("https://immersiveadt.api.eus.digitaltwins.azure.net");
-            Console.WriteLine("Press enter to connect to MSFS");
+            Console.WriteLine("Press Enter to Connect to MSFS2020...");
             Console.ReadLine();
 
             MicrosoftFlightSimulatorConnection microsoftFlightSimulatorConnection = new MicrosoftFlightSimulatorConnection();
-            microsoftFlightSimulatorConnection.Start();
+            microsoftFlightSimulatorConnection.Connect();
             Console.ReadLine();
         }
     }
@@ -38,8 +38,6 @@ namespace IngressClientADT
         public double PLANE_LONGITUDE { get; set; }
     }
 
-    // https://www.fsdeveloper.com/forum/threads/c-console-app.451567/
-    // https://www.prepar3d.com/SDKv4/sdk/simconnect_api/samples/managed_scenario_controller.html
     public class MicrosoftFlightSimulatorConnection
     {
         public SIMCONNECT_SIMOBJECT_TYPE simObjectType = SIMCONNECT_SIMOBJECT_TYPE.USER;
@@ -80,20 +78,23 @@ namespace IngressClientADT
         private Thread SimConnectThread = null;
         private bool mQuit = false;
 
-        public enum EventIdentifier
+        private enum EventIdentifier
         {
             MissionCompleted = 0,
         }
 
-        enum MissionStatus
+        private enum MissionStatus
         {
             MissionStatusFailed,
             MissionStatusCrashed,
             MissionStatusSucceeded,
         };
 
-        public bool Start()
+        public bool Connect()
         {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("Attempting a connection to MSFS2020...");
+
             bool result = false;
 
             try
@@ -127,7 +128,7 @@ namespace IngressClientADT
                         }
                         catch
                         {
-                            System.Console.WriteLine("ERROR: Failed to recive a message from simconnect");
+                            Console.WriteLine("ERROR: Failed to recive a message from simconnect");
                         }
 
                         Thread.Sleep(500);
@@ -183,7 +184,8 @@ namespace IngressClientADT
 
         private void AddRequest(string simvarRequest, string newUnitRequest, bool isString)
         {
-            Console.WriteLine($"Added Request {simvarRequest}");
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine($"Adding Request {simvarRequest}");
 
             SimvarRequest oSimvarRequest = new SimvarRequest
             {
@@ -204,18 +206,12 @@ namespace IngressClientADT
 
         public void PollTelemetryRequests()
         {
-            AddRequest("PLANE ALTITUDE", "feet", false);
-            AddRequest("PLANE LATITUDE", "radians", false);
-            AddRequest("PLANE LONGITUDE", "radians", false);
-            AddRequest("PLANE PITCH DEGREES", "radians", false);
-            AddRequest("PLANE HEADING DEGREES TRUE", "radians", false);
-            AddRequest("AIRSPEED INDICATED", "knots", false);
-
             while (SimConnect != null)
             {
                 try
                 {
-                    Console.WriteLine("Polling for telemetry requests");
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("Polling for Telemetry Requests...");
 
                     foreach (SimvarRequest simvarRequest in simvarRequests)
                     {
@@ -245,6 +241,7 @@ namespace IngressClientADT
                 {
                     /// Define a data structure containing string value
                     SimConnect.AddToDataDefinition(simvarRequest.eDef, simvarRequest.sName, "", SIMCONNECT_DATATYPE.STRING256, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+
                     /// IMPORTANT: Register it with the simconnect managed wrapper marshaller
                     /// If you skip this step, you will only receive a uint in the .dwData field.
                     SimConnect.RegisterDataDefineStruct<Struct1>(simvarRequest.eDef);
@@ -253,6 +250,7 @@ namespace IngressClientADT
                 {
                     /// Define a data structure containing numerical value
                     SimConnect.AddToDataDefinition(simvarRequest.eDef, simvarRequest.sName, simvarRequest.sUnits, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+
                     /// IMPORTANT: Register it with the simconnect managed wrapper marshaller
                     /// If you skip this step, you will only receive a uint in the .dwData field.
                     SimConnect.RegisterDataDefineStruct<double>(simvarRequest.eDef);
@@ -270,26 +268,23 @@ namespace IngressClientADT
         {
             switch ((EventIdentifier)data.uEventID)
             {
-                // Mission completion result.
-                // This type of scenario information could potentially be used by an LMS,
-                // however is beyond the scope of this sample.
                 case EventIdentifier.MissionCompleted:
                     {
                         switch ((MissionStatus)data.dwData)
                         {
                             case MissionStatus.MissionStatusFailed:
                                 {
-                                    System.Console.WriteLine("Mission completion status: FAILED.");
+                                    System.Console.WriteLine("Mission status: Failed.");
                                     break;
                                 }
                             case MissionStatus.MissionStatusCrashed:
                                 {
-                                    System.Console.WriteLine("Mission completion status: CRASHED.");
+                                    System.Console.WriteLine("Mission status: Crashed.");
                                     break;
                                 }
                             case MissionStatus.MissionStatusSucceeded:
                                 {
-                                    System.Console.WriteLine("Mission completion status: SUCCEEDED.");
+                                    System.Console.WriteLine("Mission status: Succeded.");
                                     break;
                                 }
                         }
@@ -301,12 +296,19 @@ namespace IngressClientADT
 
         private void SimConnect_OnRecvOpen(SimConnect sender, SIMCONNECT_RECV_OPEN data)
         {
-            Console.WriteLine("SimConnect_OnRecvOpen");
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("Connection to MSFS2020 Successful");
+
+            AddRequest("PLANE ALTITUDE", "feet", false);
+            AddRequest("PLANE LATITUDE", "radians", false);
+            AddRequest("PLANE LONGITUDE", "radians", false);
+            AddRequest("PLANE PITCH DEGREES", "radians", false);
+            AddRequest("PLANE HEADING DEGREES TRUE", "radians", false);
+            AddRequest("AIRSPEED INDICATED", "knots", false);
 
             PollTelemetryRequests();
         }
 
-        /// The case where the user closes game
         private void SimConnect_OnRecvQuit(SimConnect sender, SIMCONNECT_RECV data)
         {
             Console.WriteLine("SimConnect_OnRecvQuit");
@@ -320,6 +322,7 @@ namespace IngressClientADT
 
         private void SimConnect_OnRecvException(SimConnect sender, SIMCONNECT_RECV_EXCEPTION data)
         {
+            Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine("SimConnect Exception");
         }
 
@@ -339,7 +342,7 @@ namespace IngressClientADT
                         oSimvarRequest.sValue = result.sValue;
 
                         Console.ForegroundColor = ConsoleColor.Blue;
-                        Console.WriteLine($"{oSimvarRequest.sName} {oSimvarRequest.sValue}", Console.ForegroundColor);
+                        Console.WriteLine($"{oSimvarRequest.sName}: {oSimvarRequest.sValue}", Console.ForegroundColor);
                         Console.ResetColor();
                     }
                     else
@@ -349,7 +352,7 @@ namespace IngressClientADT
                         oSimvarRequest.sValue = dValue.ToString("F9");
 
                         Console.ForegroundColor = ConsoleColor.Blue;
-                        Console.WriteLine($"{oSimvarRequest.sName} {oSimvarRequest.sValue}", Console.ForegroundColor);
+                        Console.WriteLine($"{oSimvarRequest.sName}: {oSimvarRequest.sValue}", Console.ForegroundColor);
                         Console.ResetColor();
                     }
                 }
