@@ -42,16 +42,14 @@ namespace IngressClientADT
     // https://www.prepar3d.com/SDKv4/sdk/simconnect_api/samples/managed_scenario_controller.html
     public class MicrosoftFlightSimulatorConnection
     {
-        public enum DEFINITION
-        {
-            Dummy = 0
-        };
+        public SIMCONNECT_SIMOBJECT_TYPE simObjectType = SIMCONNECT_SIMOBJECT_TYPE.USER;
+        public List<SimvarRequest> simvarRequests = new List<SimvarRequest>();
 
-        public enum REQUEST
-        {
-            Dummy = 0,
-            Struct1
-        };
+        public enum DEFINITION { Dummy = 0 };
+        public enum REQUEST { Dummy = 0, Struct1 };
+
+        private uint CurrentDefinition = 0;
+        private uint CurrentRequest = 0;
 
         // String properties must be packed inside of a struct
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -74,10 +72,10 @@ namespace IngressClientADT
             public double dValue = 0.0;
             public string sValue = null;
             public string sUnits { get; set; }
+            public bool bPending = true;
         };
 
         /// SimConnect object
-        private SimConnect simConnect = null;
         private SimConnect SimConnect = null;
         private Thread SimConnectThread = null;
         private bool mQuit = false;
@@ -113,6 +111,41 @@ namespace IngressClientADT
             return result;
         }
 
+        private void StartSimConnectThread()
+        {
+            Thread.Sleep(2500);
+
+            if (PollForConnection())
+            {
+                if (SimConnect != null)
+                {
+                    while (!mQuit)
+                    {
+                        try
+                        {
+                            SimConnect.ReceiveMessage();
+                        }
+                        catch
+                        {
+                            System.Console.WriteLine("ERROR: Failed to recive a message from simconnect");
+                        }
+
+                        Thread.Sleep(500);
+                    }
+
+                    if (mQuit)
+                    {
+                        SimConnect.Dispose();
+                        SimConnect = null;
+                    }
+                }
+            }
+            else
+            {
+                System.Console.WriteLine("ERROR: SimConnect failed to connect (timed out).");
+            }
+        }
+
         private bool PollForConnection()
         {
             int retryCounter = 1000;
@@ -138,7 +171,7 @@ namespace IngressClientADT
                     Console.WriteLine("ERROR: Failed to poll for connection");
                 }
 
-                if (SimConnect == null)
+                if (SimConnect != null)
                 {
                     Thread.Sleep(500);
                     --retryCounter;
@@ -148,37 +181,88 @@ namespace IngressClientADT
             return (retryCounter > 0);
         }
 
-        private void StartSimConnectThread()
+        private void AddRequest(string simvarRequest, string newUnitRequest, bool isString)
         {
-            Thread.Sleep(2500);
+            Console.WriteLine($"Added Request {simvarRequest}");
 
-            if (PollForConnection())
+            SimvarRequest oSimvarRequest = new SimvarRequest
             {
-                if (SimConnect != null)
+                eDef = (DEFINITION)CurrentDefinition,
+                eRequest = (REQUEST)CurrentRequest,
+                sName = simvarRequest,
+                bIsString = isString,
+                sUnits = isString ? null : newUnitRequest
+            };
+
+            oSimvarRequest.bPending = !RegisterToSimConnect(oSimvarRequest);
+
+            simvarRequests.Add(oSimvarRequest);
+
+            ++CurrentDefinition;
+            ++CurrentRequest;
+        }
+
+        public void PollTelemetryRequests()
+        {
+            AddRequest("PLANE ALTITUDE", "feet", false);
+            AddRequest("PLANE LATITUDE", "radians", false);
+            AddRequest("PLANE LONGITUDE", "radians", false);
+            AddRequest("PLANE PITCH DEGREES", "radians", false);
+            AddRequest("PLANE HEADING DEGREES TRUE", "radians", false);
+            AddRequest("AIRSPEED INDICATED", "knots", false);
+
+            while (SimConnect != null)
+            {
+                try
                 {
-                    while (!mQuit)
-                    {
-                        try
-                        {
-                            SimConnect.ReceiveMessage();
-                        }
-                        catch
-                        {
-                        }
+                    Console.WriteLine("Polling for telemetry requests");
 
-                        Thread.Sleep(500);
-                    }
-
-                    if (mQuit)
+                    foreach (SimvarRequest simvarRequest in simvarRequests)
                     {
-                        SimConnect.Dispose();
-                        SimConnect = null;
+                        SimConnect.ReceiveMessage();
+                        SimConnect?.RequestDataOnSimObjectType(simvarRequest.eRequest, simvarRequest.eDef, 0, simObjectType);
                     }
                 }
+                catch
+                {
+                    Console.WriteLine("ERROR: Failed to poll for connection");
+                }
+
+                if (SimConnect != null)
+                {
+                    Thread.Sleep(500);
+                }
+
+                Console.Clear();
+            }
+        }
+
+        private bool RegisterToSimConnect(SimvarRequest simvarRequest)
+        {
+            if (SimConnect != null)
+            {
+                if (simvarRequest.bIsString)
+                {
+                    /// Define a data structure containing string value
+                    SimConnect.AddToDataDefinition(simvarRequest.eDef, simvarRequest.sName, "", SIMCONNECT_DATATYPE.STRING256, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    /// IMPORTANT: Register it with the simconnect managed wrapper marshaller
+                    /// If you skip this step, you will only receive a uint in the .dwData field.
+                    SimConnect.RegisterDataDefineStruct<Struct1>(simvarRequest.eDef);
+                }
+                else
+                {
+                    /// Define a data structure containing numerical value
+                    SimConnect.AddToDataDefinition(simvarRequest.eDef, simvarRequest.sName, simvarRequest.sUnits, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    /// IMPORTANT: Register it with the simconnect managed wrapper marshaller
+                    /// If you skip this step, you will only receive a uint in the .dwData field.
+                    SimConnect.RegisterDataDefineStruct<double>(simvarRequest.eDef);
+                }
+
+                return true;
             }
             else
             {
-                System.Console.WriteLine("ERROR: SimConnect failed to connect (timed out).");
+                return false;
             }
         }
 
@@ -218,6 +302,8 @@ namespace IngressClientADT
         private void SimConnect_OnRecvOpen(SimConnect sender, SIMCONNECT_RECV_OPEN data)
         {
             Console.WriteLine("SimConnect_OnRecvOpen");
+
+            PollTelemetryRequests();
         }
 
         /// The case where the user closes game
@@ -225,10 +311,10 @@ namespace IngressClientADT
         {
             Console.WriteLine("SimConnect_OnRecvQuit");
 
-            if (simConnect != null)
+            if (SimConnect != null)
             {
-                simConnect.Dispose();
-                simConnect = null;
+                SimConnect.Dispose();
+                SimConnect = null;
             }
         }
 
@@ -239,35 +325,34 @@ namespace IngressClientADT
 
         private void SimConnect_OnRecvSimobjectDataBytype(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
         {
-            Console.WriteLine("SimConnect_OnRecvSimobjectDataBytype");
-        }
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.ResetColor();
 
-        private bool RegisterToSimConnect(SimvarRequest simvarRequest)
-        {
-            if (simConnect != null)
+            foreach (SimvarRequest oSimvarRequest in simvarRequests)
             {
-                if (simvarRequest.bIsString)
+                if (data.dwRequestID == (uint)oSimvarRequest.eRequest)
                 {
-                    /// Define a data structure containing string value
-                    simConnect.AddToDataDefinition(simvarRequest.eDef, simvarRequest.sName, "", SIMCONNECT_DATATYPE.STRING256, 0.0f, SimConnect.SIMCONNECT_UNUSED);
-                    /// IMPORTANT: Register it with the simconnect managed wrapper marshaller
-                    /// If you skip this step, you will only receive a uint in the .dwData field.
-                    simConnect.RegisterDataDefineStruct<Struct1>(simvarRequest.eDef);
-                }
-                else
-                {
-                    /// Define a data structure containing numerical value
-                    simConnect.AddToDataDefinition(simvarRequest.eDef, simvarRequest.sName, simvarRequest.sUnits, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
-                    /// IMPORTANT: Register it with the simconnect managed wrapper marshaller
-                    /// If you skip this step, you will only receive a uint in the .dwData field.
-                    simConnect.RegisterDataDefineStruct<double>(simvarRequest.eDef);
-                }
+                    if (oSimvarRequest.bIsString)
+                    {
+                        Struct1 result = (Struct1)data.dwData[0];
+                        oSimvarRequest.dValue = 0;
+                        oSimvarRequest.sValue = result.sValue;
 
-                return true;
-            }
-            else
-            {
-                return false;
+                        Console.ForegroundColor = ConsoleColor.Blue;
+                        Console.WriteLine($"{oSimvarRequest.sName} {oSimvarRequest.sValue}", Console.ForegroundColor);
+                        Console.ResetColor();
+                    }
+                    else
+                    {
+                        double dValue = (double)data.dwData[0];
+                        oSimvarRequest.dValue = dValue;
+                        oSimvarRequest.sValue = dValue.ToString("F9");
+
+                        Console.ForegroundColor = ConsoleColor.Blue;
+                        Console.WriteLine($"{oSimvarRequest.sName} {oSimvarRequest.sValue}", Console.ForegroundColor);
+                        Console.ResetColor();
+                    }
+                }
             }
         }
     }
