@@ -1,0 +1,90 @@
+{
+  "@id": "dtmi:com:adt:Aircraft;1",
+  "@type": "Interface",
+  "displayName": "Aircraft",
+  "contents": [
+    {
+      "@type": "Property",
+      "name": "AIRCRAFT_ID",
+      "displayName": "AircraftID",
+      "description": "The unique id of the aircraft",
+      "writable": true,
+      "schema": "string"
+    },
+    {
+      "@type": "Property",
+      "name": "AIRCRAFT_TYPE",
+      "displayName": "AircraftType",
+      "description": "The type of the aircraft",
+      "writable": true,
+      "schema": "string"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "Pitch",
+      "name": "PLANE_PITCH",
+      "description": "Pitch angle",
+      "schema": "double"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "Altitude",
+      "name": "PLANE_ALTITUDE",
+      "description": "Altitude of aircraft",
+      "schema": "integer"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "Heading",
+      "name": "PLANE_HEADING_TRUE",
+      "description": "Heading relative to true north",
+      "schema": "double"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "Longitude",
+      "name": "PLANE_LONGITUDE",
+      "description": "Longitude of aircraft, East is positive, West negative",
+      "schema": "double"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "Latitude",
+      "name": "PLANE_LATITUDE",
+      "description": "Latitude of aircraft, North is positive, South negative",
+      "schema": "double"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "Airspeed",
+      "name": "AIRSPEED_INDICATED",
+      "schema": "integer"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "EngineHydraulicFluid",
+      "name": "ENG_HYDRAULIC_QUANTITY",
+      "schema": "integer"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "EngineOilTemperature",
+      "name": "ENG_OIL_TEMPERATURE",
+      "schema": "integer"
+    },
+    {
+      "@type": "Telemetry",
+      "displayName": "CurrentFuelQuantity",
+      "name": "FUEL_TOTAL_QUANTITY",
+      "schema": "double"
+    },
+    {
+      "@type": "Property",
+      "displayName": "EngineFailure",
+      "name": "GENERAL_ENG_FAILED",
+      "schema": "boolean",
+      "writable": true
+    }
+  ],
+  "@context": "dtmi:dtdl:context;2"
+}
