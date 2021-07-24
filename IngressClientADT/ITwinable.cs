@@ -6,6 +6,6 @@ namespace IngressClientADT
     {
         public BasicDigitalTwin DigitalTwin { get; set; }
 
-        public string InstanceID { get; }
+        public string TwinId { get; }
     }
 }

@@ -2,16 +2,10 @@
 using Azure.Core.Pipeline;
 using Azure.DigitalTwins.Core;
 using Azure.Identity;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System.Collections.ObjectModel;
-using System.Globalization;
-using System.IO;
 using System.Runtime.InteropServices;
-using System.Windows.Threading;
 using Microsoft.FlightSimulator.SimConnect;
-using System.Windows.Forms;
 using System;
+using System.Text.Json;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Threading;
@@ -21,33 +15,40 @@ namespace IngressClientADT
 {
     class Program
     {
+        private static DigitalTwinIngressControlller digitalTwinController;
+        private static MicrosoftFlightSimulatorConnection microsoftFlightSimulatorConnection;
+
         static void Main(string[] args)
         {
-            //MicrosoftFlightSimulatorDigitalTwinIngressControlller digitalTwinController = new MicrosoftFlightSimulatorDigitalTwinIngressControlller("https://immersiveadt.api.eus.digitaltwins.azure.net");
+            digitalTwinController = new DigitalTwinIngressControlller("https://immersiveadt.api.eus.digitaltwins.azure.net");
             Console.WriteLine("Press Enter to Connect to MSFS2020...");
             Console.ReadLine();
 
-            MicrosoftFlightSimulatorConnection microsoftFlightSimulatorConnection = new MicrosoftFlightSimulatorConnection();
+            microsoftFlightSimulatorConnection = new MicrosoftFlightSimulatorConnection();
             microsoftFlightSimulatorConnection.Connect();
+            microsoftFlightSimulatorConnection.OnUserAircraftCreated += digitalTwinController.Standup;
+            microsoftFlightSimulatorConnection.OnAircraftTelemtryUpdated += digitalTwinController.PublishTelemetry;
+            microsoftFlightSimulatorConnection.OnSimulationExit += digitalTwinController.Shutdown;
             Console.ReadLine();
         }
     }
 
-    public class LongitudeTelemetry
-    {
-        public double PLANE_LONGITUDE { get; set; }
-    }
-
     public class MicrosoftFlightSimulatorConnection
     {
-        public SIMCONNECT_SIMOBJECT_TYPE simObjectType = SIMCONNECT_SIMOBJECT_TYPE.USER;
-        public List<SimvarRequest> simvarRequests = new List<SimvarRequest>();
+        public Aircraft Aircraft;
+
+        public SIMCONNECT_SIMOBJECT_TYPE SimObjectType = SIMCONNECT_SIMOBJECT_TYPE.USER;
+        public List<SimvarRequest> SimvarRequests = new List<SimvarRequest>();
 
         public enum DEFINITION { Dummy = 0 };
         public enum REQUEST { Dummy = 0, Struct1 };
 
         private uint CurrentDefinition = 0;
         private uint CurrentRequest = 0;
+
+        public Action<ITwinable> OnUserAircraftCreated;
+        public Action<ITwinable, string> OnAircraftTelemtryUpdated;
+        public Action<ITwinable> OnSimulationExit;
 
         // String properties must be packed inside of a struct
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -63,19 +64,20 @@ namespace IngressClientADT
 
         public class SimvarRequest
         {
-            public DEFINITION eDef = DEFINITION.Dummy;
-            public REQUEST eRequest = REQUEST.Dummy;
-            public string sName { get; set; }
-            public bool bIsString { get; set; }
-            public double dValue = 0.0;
+            public DEFINITION Def = DEFINITION.Dummy;
+            public REQUEST Request = REQUEST.Dummy;
+            public string Name { get; set; }
+            public bool IsString { get; set; }
+            public double Value = 0.0;
             public string sValue = null;
-            public string sUnits { get; set; }
-            public bool bPending = true;
+            public string Units { get; set; }
+            public ITwinable Twin { get; set; }
+            public bool Pending = true;
         };
 
         /// SimConnect object
-        private SimConnect SimConnect = null;
-        private Thread SimConnectThread = null;
+        private SimConnect simConnect = null;
+        private Thread simConnectThread = null;
         private bool mQuit = false;
 
         private enum EventIdentifier
@@ -99,9 +101,9 @@ namespace IngressClientADT
 
             try
             {
-                SimConnectThread = new Thread(new ThreadStart(StartSimConnectThread));
-                SimConnectThread.IsBackground = true;
-                SimConnectThread.Start();
+                simConnectThread = new Thread(new ThreadStart(StartSimConnectThread));
+                simConnectThread.IsBackground = true;
+                simConnectThread.Start();
                 result = true;
             }
             catch
@@ -118,13 +120,13 @@ namespace IngressClientADT
 
             if (PollForConnection())
             {
-                if (SimConnect != null)
+                if (simConnect != null)
                 {
                     while (!mQuit)
                     {
                         try
                         {
-                            SimConnect.ReceiveMessage();
+                            simConnect.ReceiveMessage();
                         }
                         catch
                         {
@@ -136,14 +138,14 @@ namespace IngressClientADT
 
                     if (mQuit)
                     {
-                        SimConnect.Dispose();
-                        SimConnect = null;
+                        simConnect.Dispose();
+                        simConnect = null;
                     }
                 }
             }
             else
             {
-                System.Console.WriteLine("ERROR: SimConnect failed to connect (timed out).");
+                Console.WriteLine("ERROR: SimConnect failed to connect (timed out).");
             }
         }
 
@@ -151,20 +153,20 @@ namespace IngressClientADT
         {
             int retryCounter = 1000;
 
-            while (SimConnect == null && retryCounter > 0)
+            while (simConnect == null && retryCounter > 0)
             {
                 try
                 {
-                    SimConnect = new SimConnect("Managed Scenario Controller", IntPtr.Zero, 0, null, 0);
-                    if (SimConnect != null)
+                    simConnect = new SimConnect("Managed Scenario Controller", IntPtr.Zero, 0, null, 0);
+                    if (simConnect != null)
                     {
-                        SimConnect.OnRecvOpen += new SimConnect.RecvOpenEventHandler(SimConnect_OnRecvOpen);
-                        SimConnect.OnRecvQuit += new SimConnect.RecvQuitEventHandler(SimConnect_OnRecvQuit);
-                        SimConnect.OnRecvEvent += new SimConnect.RecvEventEventHandler(SimConnect_OnRecvEvent);
-                        SimConnect.OnRecvException += new SimConnect.RecvExceptionEventHandler(SimConnect_OnRecvException);
-                        SimConnect.OnRecvSimobjectDataBytype += new SimConnect.RecvSimobjectDataBytypeEventHandler(SimConnect_OnRecvSimobjectDataBytype);
-                        SimConnect.SubscribeToSystemEvent(EventIdentifier.MissionCompleted, "MissionCompleted");
-                        SimConnect.SetSystemEventState(EventIdentifier.MissionCompleted, SIMCONNECT_STATE.ON);
+                        simConnect.OnRecvOpen += new SimConnect.RecvOpenEventHandler(SimConnect_OnRecvOpen);
+                        simConnect.OnRecvQuit += new SimConnect.RecvQuitEventHandler(SimConnect_OnRecvQuit);
+                        simConnect.OnRecvEvent += new SimConnect.RecvEventEventHandler(SimConnect_OnRecvEvent);
+                        simConnect.OnRecvException += new SimConnect.RecvExceptionEventHandler(SimConnect_OnRecvException);
+                        simConnect.OnRecvSimobjectDataBytype += new SimConnect.RecvSimobjectDataBytypeEventHandler(SimConnect_OnRecvSimobjectDataBytype);
+                        simConnect.SubscribeToSystemEvent(EventIdentifier.MissionCompleted, "MissionCompleted");
+                        simConnect.SetSystemEventState(EventIdentifier.MissionCompleted, SIMCONNECT_STATE.ON);
                     }
                 }
                 catch
@@ -172,7 +174,7 @@ namespace IngressClientADT
                     Console.WriteLine("ERROR: Failed to poll for connection");
                 }
 
-                if (SimConnect != null)
+                if (simConnect != null)
                 {
                     Thread.Sleep(500);
                     --retryCounter;
@@ -182,41 +184,61 @@ namespace IngressClientADT
             return (retryCounter > 0);
         }
 
-        private void AddRequest(string simvarRequest, string newUnitRequest, bool isString)
+        private void AddRequest(string simvarRequest, string newUnitRequest, bool isString, ITwinable twin)
         {
             Console.ForegroundColor = ConsoleColor.White;
             Console.WriteLine($"Adding Request {simvarRequest}");
 
             SimvarRequest oSimvarRequest = new SimvarRequest
             {
-                eDef = (DEFINITION)CurrentDefinition,
-                eRequest = (REQUEST)CurrentRequest,
-                sName = simvarRequest,
-                bIsString = isString,
-                sUnits = isString ? null : newUnitRequest
+                Def = (DEFINITION)CurrentDefinition,
+                Request = (REQUEST)CurrentRequest,
+                Name = simvarRequest,
+                IsString = isString,
+                Units = isString ? null : newUnitRequest,
+                Twin = twin
             };
 
-            oSimvarRequest.bPending = !RegisterToSimConnect(oSimvarRequest);
+            oSimvarRequest.Pending = !RegisterToSimConnect(oSimvarRequest);
 
-            simvarRequests.Add(oSimvarRequest);
+            SimvarRequests.Add(oSimvarRequest);
 
             ++CurrentDefinition;
             ++CurrentRequest;
         }
 
+        private void SimConnect_OnRecvOpen(SimConnect sender, SIMCONNECT_RECV_OPEN data)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("Connection to MSFS2020 Successful");
+
+            Aircraft = new Aircraft("F151", "dtmi:com:adt:Aircraft;1");
+
+            AddRequest("PLANE ALTITUDE", "feet", false, Aircraft);
+            AddRequest("PLANE LATITUDE", "radians", false, Aircraft);
+            AddRequest("PLANE LONGITUDE", "radians", false, Aircraft);
+            AddRequest("PLANE PITCH DEGREES", "radians", false, Aircraft);
+            AddRequest("PLANE HEADING DEGREES TRUE", "radians", false, Aircraft);
+            AddRequest("AIRSPEED INDICATED", "knots", false, Aircraft);
+
+            OnUserAircraftCreated?.Invoke(Aircraft);
+
+            PollTelemetryRequests();
+        }
+
         public void PollTelemetryRequests()
         {
-            while (SimConnect != null)
+            while (simConnect != null)
             {
                 try
                 {
                     Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("Polling for Telemetry Requests...");
+                    Console.WriteLine("Polling for Telemetry Requests from MSFS...");
 
-                    foreach (SimvarRequest simvarRequest in simvarRequests)
+                    foreach (SimvarRequest simvarRequest in SimvarRequests)
                     {
-                        SimConnect.ReceiveMessage();
-                        SimConnect?.RequestDataOnSimObjectType(simvarRequest.eRequest, simvarRequest.eDef, 0, simObjectType);
+                        simConnect.ReceiveMessage();
+                        simConnect?.RequestDataOnSimObjectType(simvarRequest.Request, simvarRequest.Def, 0, SimObjectType);
                     }
                 }
                 catch
@@ -224,7 +246,7 @@ namespace IngressClientADT
                     Console.WriteLine("ERROR: Failed to poll for connection");
                 }
 
-                if (SimConnect != null)
+                if (simConnect != null)
                 {
                     Thread.Sleep(500);
                 }
@@ -235,25 +257,25 @@ namespace IngressClientADT
 
         private bool RegisterToSimConnect(SimvarRequest simvarRequest)
         {
-            if (SimConnect != null)
+            if (simConnect != null)
             {
-                if (simvarRequest.bIsString)
+                if (simvarRequest.IsString)
                 {
                     /// Define a data structure containing string value
-                    SimConnect.AddToDataDefinition(simvarRequest.eDef, simvarRequest.sName, "", SIMCONNECT_DATATYPE.STRING256, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(simvarRequest.Def, simvarRequest.Name, "", SIMCONNECT_DATATYPE.STRING256, 0.0f, SimConnect.SIMCONNECT_UNUSED);
 
                     /// IMPORTANT: Register it with the simconnect managed wrapper marshaller
                     /// If you skip this step, you will only receive a uint in the .dwData field.
-                    SimConnect.RegisterDataDefineStruct<Struct1>(simvarRequest.eDef);
+                    simConnect.RegisterDataDefineStruct<Struct1>(simvarRequest.Def);
                 }
                 else
                 {
                     /// Define a data structure containing numerical value
-                    SimConnect.AddToDataDefinition(simvarRequest.eDef, simvarRequest.sName, simvarRequest.sUnits, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(simvarRequest.Def, simvarRequest.Name, simvarRequest.Units, SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
 
                     /// IMPORTANT: Register it with the simconnect managed wrapper marshaller
                     /// If you skip this step, you will only receive a uint in the .dwData field.
-                    SimConnect.RegisterDataDefineStruct<double>(simvarRequest.eDef);
+                    simConnect.RegisterDataDefineStruct<double>(simvarRequest.Def);
                 }
 
                 return true;
@@ -264,59 +286,46 @@ namespace IngressClientADT
             }
         }
 
-        void SimConnect_OnRecvEvent(SimConnect sender, SIMCONNECT_RECV_EVENT data)
+        private void SimConnect_OnRecvEvent(SimConnect sender, SIMCONNECT_RECV_EVENT data)
         {
             switch ((EventIdentifier)data.uEventID)
             {
                 case EventIdentifier.MissionCompleted:
+                {
+                    switch ((MissionStatus)data.dwData)
                     {
-                        switch ((MissionStatus)data.dwData)
-                        {
-                            case MissionStatus.MissionStatusFailed:
-                                {
-                                    System.Console.WriteLine("Mission status: Failed.");
-                                    break;
-                                }
-                            case MissionStatus.MissionStatusCrashed:
-                                {
-                                    System.Console.WriteLine("Mission status: Crashed.");
-                                    break;
-                                }
-                            case MissionStatus.MissionStatusSucceeded:
-                                {
-                                    System.Console.WriteLine("Mission status: Succeded.");
-                                    break;
-                                }
-                        }
-
-                        break;
+                        case MissionStatus.MissionStatusFailed:
+                            {
+                                System.Console.WriteLine("Mission status: Failed.");
+                                break;
+                            }
+                        case MissionStatus.MissionStatusCrashed:
+                            {
+                                System.Console.WriteLine("Mission status: Crashed.");
+                                break;
+                            }
+                        case MissionStatus.MissionStatusSucceeded:
+                            {
+                                System.Console.WriteLine("Mission status: Succeded.");
+                                break;
+                            }
                     }
+
+                    break;
+                }
             }
-        }
-
-        private void SimConnect_OnRecvOpen(SimConnect sender, SIMCONNECT_RECV_OPEN data)
-        {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("Connection to MSFS2020 Successful");
-
-            AddRequest("PLANE ALTITUDE", "feet", false);
-            AddRequest("PLANE LATITUDE", "radians", false);
-            AddRequest("PLANE LONGITUDE", "radians", false);
-            AddRequest("PLANE PITCH DEGREES", "radians", false);
-            AddRequest("PLANE HEADING DEGREES TRUE", "radians", false);
-            AddRequest("AIRSPEED INDICATED", "knots", false);
-
-            PollTelemetryRequests();
         }
 
         private void SimConnect_OnRecvQuit(SimConnect sender, SIMCONNECT_RECV data)
         {
             Console.WriteLine("SimConnect_OnRecvQuit");
 
-            if (SimConnect != null)
+            OnSimulationExit?.Invoke(Aircraft);
+
+            if (simConnect != null)
             {
-                SimConnect.Dispose();
-                SimConnect = null;
+                simConnect.Dispose();
+                simConnect = null;
             }
         }
 
@@ -331,82 +340,99 @@ namespace IngressClientADT
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.ResetColor();
 
-            foreach (SimvarRequest oSimvarRequest in simvarRequests)
+            foreach (SimvarRequest oSimvarRequest in SimvarRequests)
             {
-                if (data.dwRequestID == (uint)oSimvarRequest.eRequest)
+                if (data.dwRequestID == (uint)oSimvarRequest.Request)
                 {
-                    if (oSimvarRequest.bIsString)
+                    if (oSimvarRequest.IsString)
                     {
                         Struct1 result = (Struct1)data.dwData[0];
-                        oSimvarRequest.dValue = 0;
+                        oSimvarRequest.Value = 0;
                         oSimvarRequest.sValue = result.sValue;
 
                         Console.ForegroundColor = ConsoleColor.Blue;
-                        Console.WriteLine($"{oSimvarRequest.sName}: {oSimvarRequest.sValue}", Console.ForegroundColor);
+                        Console.WriteLine($"{oSimvarRequest.Name}: {oSimvarRequest.sValue}", Console.ForegroundColor);
                         Console.ResetColor();
                     }
                     else
                     {
                         double dValue = (double)data.dwData[0];
-                        oSimvarRequest.dValue = dValue;
+                        oSimvarRequest.Value = dValue;
                         oSimvarRequest.sValue = dValue.ToString("F9");
 
                         Console.ForegroundColor = ConsoleColor.Blue;
-                        Console.WriteLine($"{oSimvarRequest.sName}: {oSimvarRequest.sValue}", Console.ForegroundColor);
+                        Console.WriteLine($"{oSimvarRequest.Name}: {oSimvarRequest.sValue}", Console.ForegroundColor);
                         Console.ResetColor();
                     }
+
+                    Dictionary<string, string> telemetryPayload = new Dictionary<string, string>
+                    {
+                        { $"{oSimvarRequest.Name}", $"{oSimvarRequest.sValue}" }
+                    };
+
+                    OnAircraftTelemtryUpdated(oSimvarRequest.Twin, JsonSerializer.Serialize(telemetryPayload));
                 }
             }
         }
     }
 
-    public class MicrosoftFlightSimulatorDigitalTwinIngressControlller
+    public class DigitalTwinIngressControlller
     {
         private readonly HttpClient httpClient = new HttpClient();
-        private DigitalTwinsClient client;
-        private string adtServiceUrl;
-        public Dictionary<string, DigitalTwinsModelData> adtModels = new Dictionary<string, DigitalTwinsModelData>();
+        public DigitalTwinsClient Client;
+        public Dictionary<string, BasicDigitalTwin> TwinInstances = new Dictionary<string, BasicDigitalTwin>();
 
-        public MicrosoftFlightSimulatorDigitalTwinIngressControlller(string adtUrl)
+        public DigitalTwinIngressControlller(string adtUrl)
         {
-            adtServiceUrl = adtUrl;
-
-            CreateADTClientInstance();
-        }
-
-        private void CreateADTClientInstance()
-        {
+            Console.WriteLine("Creating ADT Data Ingress Client...");
             DefaultAzureCredential credentials = new DefaultAzureCredential();
-            client = new DigitalTwinsClient(new Uri(adtServiceUrl), credentials, new DigitalTwinsClientOptions { Transport = new HttpClientTransport(httpClient) });
-
-            // Retrieve all models in ADT instance when client is created
-            GetDigitalTwinModelsAsync();
+            Client = new DigitalTwinsClient(new Uri(adtUrl), credentials, new DigitalTwinsClientOptions { Transport = new HttpClientTransport(httpClient) });
+            Console.WriteLine($"SUCCESS: Created ADT Data Ingress Client at {DateTime.Now}");
         }
 
-        private async void GetDigitalTwinModelsAsync()
+        public async void Standup(ITwinable twin)
         {
+            if (TwinInstances.ContainsValue(twin.DigitalTwin))
+            {
+                Console.WriteLine("ADT already exsits during this runtime and does not not initialization");
+                return;
+            }
+
+            Response<BasicDigitalTwin> response = await CreateOrReplaceDigitalTwinInstance(twin);
+            TwinInstances.Add(twin.TwinId, response.Value);
+        }
+
+        public async void Shutdown(ITwinable twin)
+        {
+            if (TwinInstances.ContainsValue(twin.DigitalTwin))
+            {
+                await DeleteTwinInstance(twin);
+            }
+        }
+
+        public async Task<Response<BasicDigitalTwin>> GetDigitalTwinAsync(ITwinable twin)
+        {
+            Console.WriteLine($"Getting digital twin {twin.TwinId}");
             try
             {
-                AsyncPageable<DigitalTwinsModelData> allModels = client.GetModelsAsync();
-
-                await foreach (DigitalTwinsModelData model in allModels)
-                {
-                    adtModels.Add(model.Id, model);
-                }
+                Response<BasicDigitalTwin> response = await Client.GetDigitalTwinAsync<BasicDigitalTwin>(twin.TwinId);
+                Console.WriteLine($"SUCCESS: ADT instance {twin.TwinId} retrieved");
+                return response;
             }
             catch (RequestFailedException ex)
             {
-                Console.WriteLine($"Failed to get all the models due to:\n{ex}");
+                throw new Exception($"Failed to get digital twin instance due to:\n{ex}");
             }
         }
 
-        public async Task<Response<BasicDigitalTwin>> CreateTwinInstanceFromModel(ITwinable twinableObject)
+        public async Task<Response<BasicDigitalTwin>> CreateOrReplaceDigitalTwinInstance(ITwinable twin)
         {
-            Console.WriteLine($"Creating digital twin of type {twinableObject.DigitalTwin.Metadata.ModelId} for MSFS instance {twinableObject.InstanceID}");
-
+            Console.WriteLine($"Creating digital twin of type {twin.DigitalTwin.Metadata.ModelId} for MSFS instance {twin.TwinId}");
             try
             {
-                return await client.CreateOrReplaceDigitalTwinAsync<BasicDigitalTwin>(twinableObject.InstanceID, twinableObject.DigitalTwin);
+                Response<BasicDigitalTwin> response = await Client.CreateOrReplaceDigitalTwinAsync<BasicDigitalTwin>(twin.TwinId, twin.DigitalTwin);
+                Console.WriteLine($"SUCCESS: ADT instance created or replaced for twin instance {twin.TwinId}");
+                return response;
             }
             catch (RequestFailedException ex)
             {
@@ -414,21 +440,37 @@ namespace IngressClientADT
             }
         }
 
-        public async Task<Response> DeleteTwinInstance(string dtid)
+        public async void PublishTelemetry(ITwinable twin, string payload)
         {
+            Console.WriteLine($"SUCCESS: Published digital twin telemetry for ADT instance {twin.TwinId}");
+            if (TwinInstances.ContainsValue(twin.DigitalTwin))
+            {
+                try
+                {
+                    await Client.PublishTelemetryAsync(twin.TwinId, Guid.NewGuid().ToString(), payload);
+                    Console.WriteLine($"SUCCESS: Published digital twin telemetry for ADT instance {twin.TwinId}");
+                }
+                catch(RequestFailedException ex)
+                {
+                    throw new Exception($"Failed to publish digital twin telemetry due to:\n{ex}");
+                }
+            }
+        }
+
+        public async Task<Response> DeleteTwinInstance(ITwinable twin)
+        {
+            Console.WriteLine($"Deleting digital twin {twin.TwinId}");
             try
             {
-                return await client.DeleteDigitalTwinAsync(dtid);
+                Response response = await Client.DeleteDigitalTwinAsync(twin.TwinId);
+                await Client.DeleteDigitalTwinAsync(twin.TwinId);
+                Console.WriteLine($"SUCCESS: ADT instance {twin.TwinId} deleted from resource group");
+                return response;
             }
             catch (RequestFailedException ex)
             {
                 throw new Exception($"Failed to delete digital twin instance due to:\n{ex}");
             }
-        }
-
-        public async Task<Response> SendTelemetryData<T>(string dtid, T data)
-        {
-            return await client.PublishTelemetryAsync(dtid, Guid.NewGuid().ToString(), JsonConvert.SerializeObject(data));
         }
     }
 }

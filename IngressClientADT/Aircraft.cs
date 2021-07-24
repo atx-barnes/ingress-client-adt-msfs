@@ -11,22 +11,17 @@ namespace IngressClientADT
     {
         public BasicDigitalTwin DigitalTwin { get; set; }
 
-        public string InstanceID { get; private set ; }
+        public string TwinId { get; private set ; }
 
-        public Aircraft(string instanceId, string modelId, Dictionary<string, string> contents)
+        public Aircraft(string instanceId, string modelId)
         {
-            InstanceID = instanceId;
+            TwinId = instanceId;
 
             DigitalTwin = new BasicDigitalTwin
             {
-                Id = InstanceID,
+                Id = TwinId,
                 Metadata = { ModelId = modelId }
             };
-
-            foreach (string key in contents.Keys)
-            {
-                DigitalTwin.Contents.Add(key, contents[key]);
-            }
         }
     }
 }
