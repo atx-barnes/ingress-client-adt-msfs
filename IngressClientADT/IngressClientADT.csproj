@@ -142,7 +142,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Aircraft.cs" />
+    <Compile Include="DigitalTwinIngressControlller.cs" />
     <Compile Include="ITwinable.cs" />
+    <Compile Include="MicrosoftFlightSimulatorConnection.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

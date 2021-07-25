@@ -4,7 +4,7 @@ namespace IngressClientADT
 {
     public interface ITwinable
     {
-        public BasicDigitalTwin DigitalTwin { get; set; }
+        public BasicDigitalTwin DigitalTwin { get; }
 
         public string TwinId { get; }
     }
