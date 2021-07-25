@@ -95,7 +95,7 @@ namespace IngressClientADT
         private async Task<Response> PublishTelemetry(ITwinable twin, string payload)
         {
             Console.ForegroundColor = ConsoleColor.Gray;
-            Console.WriteLine($"Publishing telemetry events digital twin for MSFS instance {twin.TwinId}");
+            Console.WriteLine($"Publishing telemetry events digital twin for MSFS instance {twin.TwinId} with payload {payload}");
             Console.ResetColor();
             try
             {

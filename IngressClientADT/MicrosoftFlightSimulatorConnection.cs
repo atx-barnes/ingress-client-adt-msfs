@@ -374,7 +374,7 @@ namespace IngressClientADT
                         oSimvarRequest.sValue = result.sValue;
 
                         Console.ForegroundColor = ConsoleColor.Blue;
-                        Console.WriteLine($"{oSimvarRequest.Name}: {oSimvarRequest.sValue}", Console.ForegroundColor);
+                        Console.WriteLine($"SimConnect SimvarRequest {oSimvarRequest.Name} - Received with Value: {oSimvarRequest.sValue}", Console.ForegroundColor);
                         Console.ResetColor();
                     }
                     else
@@ -384,7 +384,7 @@ namespace IngressClientADT
                         oSimvarRequest.sValue = dValue.ToString("F9");
 
                         Console.ForegroundColor = ConsoleColor.Blue;
-                        Console.WriteLine($"{oSimvarRequest.Name}: {oSimvarRequest.sValue}", Console.ForegroundColor);
+                        Console.WriteLine($"SimConnect SimvarRequest {oSimvarRequest.Name} - Received with Value: {oSimvarRequest.sValue}", Console.ForegroundColor);
                         Console.ResetColor();
                     }
                 }
