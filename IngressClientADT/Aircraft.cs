@@ -13,6 +13,8 @@ namespace IngressClientADT
 
         public string TwinId { get; private set ; }
 
+        public List<SimvarRequest> aircraftTelemetryValues = new List<SimvarRequest>();
+
         public Aircraft(string instanceId, string modelId)
         {
             TwinId = instanceId;

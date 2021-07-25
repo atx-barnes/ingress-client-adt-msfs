@@ -13,6 +13,22 @@ using System.Collections.Generic;
 
 namespace IngressClientADT
 {
+    public class SimvarRequest
+    {
+        public DEFINITION Def = DEFINITION.Dummy;
+        public REQUEST Request = REQUEST.Dummy;
+        public string Name { get; set; }
+        public bool IsString { get; set; }
+        public double Value = 0.0;
+        public string sValue = null;
+        public string Units { get; set; }
+        public ITwinable Twin { get; set; }
+        public bool Pending = true;
+    };
+
+    public enum DEFINITION { Dummy = 0 };
+    public enum REQUEST { Dummy = 0, Struct1 };
+
     class Program
     {
         private static DigitalTwinIngressControlller digitalTwinController;
@@ -27,7 +43,7 @@ namespace IngressClientADT
             microsoftFlightSimulatorConnection = new MicrosoftFlightSimulatorConnection(1000);
             microsoftFlightSimulatorConnection.Connect();
             microsoftFlightSimulatorConnection.OnUserAircraftCreated += digitalTwinController.Standup;
-            microsoftFlightSimulatorConnection.OnAircraftTelemtryUpdated += digitalTwinController.PublishTelemetry;
+            microsoftFlightSimulatorConnection.OnSimulationObjectReceived += digitalTwinController.PublishTelemetry;
             microsoftFlightSimulatorConnection.OnSimulationExit += digitalTwinController.Shutdown;
             Console.ReadLine();
         }
@@ -51,14 +67,11 @@ namespace IngressClientADT
         public SIMCONNECT_SIMOBJECT_TYPE SimObjectType = SIMCONNECT_SIMOBJECT_TYPE.USER;
         public List<SimvarRequest> SimvarRequests = new List<SimvarRequest>();
 
-        public enum DEFINITION { Dummy = 0 };
-        public enum REQUEST { Dummy = 0, Struct1 };
-
         private uint CurrentDefinition = 0;
         private uint CurrentRequest = 0;
 
         public Action<ITwinable> OnUserAircraftCreated;
-        public Action<ITwinable, string> OnAircraftTelemtryUpdated;
+        public Action<ITwinable, string> OnSimulationObjectReceived;
         public Action<ITwinable> OnSimulationExit;
 
         // String properties must be packed inside of a struct
@@ -71,19 +84,6 @@ namespace IngressClientADT
 
             // other definitions can be added to this struct
             // ...
-        };
-
-        public class SimvarRequest
-        {
-            public DEFINITION Def = DEFINITION.Dummy;
-            public REQUEST Request = REQUEST.Dummy;
-            public string Name { get; set; }
-            public bool IsString { get; set; }
-            public double Value = 0.0;
-            public string sValue = null;
-            public string Units { get; set; }
-            public ITwinable Twin { get; set; }
-            public bool Pending = true;
         };
 
         /// SimConnect object
@@ -195,7 +195,7 @@ namespace IngressClientADT
             return (retryCounter > 0);
         }
 
-        private void AddRequest(string simvarRequest, string newUnitRequest, bool isString, ITwinable twin)
+        private void AddRequest(string simvarRequest, string newUnitRequest, bool isString, Aircraft aircraft)
         {
             Console.ForegroundColor = ConsoleColor.White;
             Console.WriteLine($"Adding Request {simvarRequest}");
@@ -207,12 +207,14 @@ namespace IngressClientADT
                 Name = simvarRequest,
                 IsString = isString,
                 Units = isString ? null : newUnitRequest,
-                Twin = twin
+                Twin = aircraft
             };
 
             oSimvarRequest.Pending = !RegisterToSimConnect(oSimvarRequest);
 
             SimvarRequests.Add(oSimvarRequest);
+
+            aircraft.aircraftTelemetryValues.Add(oSimvarRequest);
 
             ++CurrentDefinition;
             ++CurrentRequest;
@@ -375,16 +377,19 @@ namespace IngressClientADT
                         Console.WriteLine($"{oSimvarRequest.Name}: {oSimvarRequest.sValue}", Console.ForegroundColor);
                         Console.ResetColor();
                     }
-
-                    Dictionary<string, string> telemetryPayload = new Dictionary<string, string>
-                    {
-                        { $"AIRCRAFT_ID", $"{oSimvarRequest.Twin.TwinId}" },
-                        { $"{oSimvarRequest.Name.Replace(" ", "_")}", $"{oSimvarRequest.sValue}" }
-                    };
-
-                    OnAircraftTelemtryUpdated(oSimvarRequest.Twin, JsonSerializer.Serialize(telemetryPayload));
                 }
             }
+
+            Dictionary<string, Object> telemetryPayload = new Dictionary<string, Object>();
+
+            telemetryPayload.Add("AIRCRAFT_ID", Aircraft.TwinId);
+
+            foreach (var request in Aircraft.aircraftTelemetryValues)
+            {
+                telemetryPayload.Add(request.Name.Replace(" ", "_"), request.Value);
+            }
+
+            OnSimulationObjectReceived(Aircraft, JsonSerializer.Serialize(telemetryPayload));
         }
     }
 
@@ -457,7 +462,7 @@ namespace IngressClientADT
             try
             {
                 Response reponse = await Client.PublishTelemetryAsync(twin.TwinId, Guid.NewGuid().ToString(), payload);
-                Console.WriteLine($"SUCCESS {reponse.ClientRequestId}: Published digital twin telemetry for ADT instance {twin.TwinId}");
+                Console.WriteLine($"SUCCESS {reponse.ClientRequestId}: Published digital twin telemetry for ADT instance {twin.TwinId}. Payload Message: {payload}");
             }
             catch (RequestFailedException ex)
             {
