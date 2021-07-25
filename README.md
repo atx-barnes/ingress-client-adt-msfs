@@ -1,1 +1,1 @@
-# Ingress Client for 5G Enabled Immersive Digital Twin
+# Data Ingress Client for Azure Digital Twin
