@@ -20,11 +20,11 @@ namespace IngressClientADT
 
         static void Main(string[] args)
         {
-            digitalTwinController = new DigitalTwinIngressControlller("https://immersiveadt.api.eus.digitaltwins.azure.net");
+            digitalTwinController = new DigitalTwinIngressControlller("https://immersiveadtadthizi25q7e2.api.eus.digitaltwins.azure.net");
             Console.WriteLine("Press Enter to Connect to MSFS2020...");
             Console.ReadLine();
 
-            microsoftFlightSimulatorConnection = new MicrosoftFlightSimulatorConnection();
+            microsoftFlightSimulatorConnection = new MicrosoftFlightSimulatorConnection(1000);
             microsoftFlightSimulatorConnection.Connect();
             microsoftFlightSimulatorConnection.OnUserAircraftCreated += digitalTwinController.Standup;
             microsoftFlightSimulatorConnection.OnAircraftTelemtryUpdated += digitalTwinController.PublishTelemetry;
@@ -35,6 +35,17 @@ namespace IngressClientADT
 
     public class MicrosoftFlightSimulatorConnection
     {
+        public int PollInterval;
+
+        /// <summary>
+        /// Constructs MSFS object with polling interval param
+        /// </summary>
+        /// <param name="interval"></param>
+        public MicrosoftFlightSimulatorConnection(int interval)
+        {
+            PollInterval = interval;
+        }
+
         public Aircraft Aircraft;
 
         public SIMCONNECT_SIMOBJECT_TYPE SimObjectType = SIMCONNECT_SIMOBJECT_TYPE.USER;
@@ -214,11 +225,11 @@ namespace IngressClientADT
 
             Aircraft = new Aircraft("F151", "dtmi:com:adt:Aircraft;1");
 
-            AddRequest("PLANE ALTITUDE", "feet", false, Aircraft);
-            AddRequest("PLANE LATITUDE", "radians", false, Aircraft);
-            AddRequest("PLANE LONGITUDE", "radians", false, Aircraft);
             AddRequest("PLANE PITCH DEGREES", "radians", false, Aircraft);
+            AddRequest("PLANE ALTITUDE", "feet", false, Aircraft);
             AddRequest("PLANE HEADING DEGREES TRUE", "radians", false, Aircraft);
+            AddRequest("PLANE LONGITUDE", "radians", false, Aircraft);
+            AddRequest("PLANE LATITUDE", "radians", false, Aircraft);
             AddRequest("AIRSPEED INDICATED", "knots", false, Aircraft);
 
             OnUserAircraftCreated?.Invoke(Aircraft);
@@ -248,7 +259,7 @@ namespace IngressClientADT
 
                 if (simConnect != null)
                 {
-                    Thread.Sleep(500);
+                    Thread.Sleep(PollInterval);
                 }
 
                 Console.Clear();
@@ -367,7 +378,8 @@ namespace IngressClientADT
 
                     Dictionary<string, string> telemetryPayload = new Dictionary<string, string>
                     {
-                        { $"{oSimvarRequest.Name}", $"{oSimvarRequest.sValue}" }
+                        { $"AIRCRAFT_ID", $"{oSimvarRequest.Twin.TwinId}" },
+                        { $"{oSimvarRequest.Name.Replace(" ", "_")}", $"{oSimvarRequest.sValue}" }
                     };
 
                     OnAircraftTelemtryUpdated(oSimvarRequest.Twin, JsonSerializer.Serialize(telemetryPayload));
@@ -442,18 +454,14 @@ namespace IngressClientADT
 
         public async void PublishTelemetry(ITwinable twin, string payload)
         {
-            Console.WriteLine($"SUCCESS: Published digital twin telemetry for ADT instance {twin.TwinId}");
-            if (TwinInstances.ContainsValue(twin.DigitalTwin))
+            try
             {
-                try
-                {
-                    await Client.PublishTelemetryAsync(twin.TwinId, Guid.NewGuid().ToString(), payload);
-                    Console.WriteLine($"SUCCESS: Published digital twin telemetry for ADT instance {twin.TwinId}");
-                }
-                catch(RequestFailedException ex)
-                {
-                    throw new Exception($"Failed to publish digital twin telemetry due to:\n{ex}");
-                }
+                Response reponse = await Client.PublishTelemetryAsync(twin.TwinId, Guid.NewGuid().ToString(), payload);
+                Console.WriteLine($"SUCCESS {reponse.ClientRequestId}: Published digital twin telemetry for ADT instance {twin.TwinId}");
+            }
+            catch (RequestFailedException ex)
+            {
+                throw new Exception($"Failed to publish digital twin telemetry due to:\n{ex}");
             }
         }
 

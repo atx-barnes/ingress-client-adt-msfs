@@ -4,25 +4,16 @@
   "displayName": "Aircraft",
   "contents": [
     {
-      "@type": "Property",
+      "@type": "Telemetry",
+      "displayName": "ID",
       "name": "AIRCRAFT_ID",
-      "displayName": "AircraftID",
-      "description": "The unique id of the aircraft",
-      "writable": true,
-      "schema": "string"
-    },
-    {
-      "@type": "Property",
-      "name": "AIRCRAFT_TYPE",
-      "displayName": "AircraftType",
-      "description": "The type of the aircraft",
-      "writable": true,
-      "schema": "string"
+      "description": "Aircraft ID",
+      "schema": "integer"
     },
     {
       "@type": "Telemetry",
       "displayName": "Pitch",
-      "name": "PLANE_PITCH",
+      "name": "PLANE_PITCH_DEGREES",
       "description": "Pitch angle",
       "schema": "double"
     },
@@ -36,7 +27,7 @@
     {
       "@type": "Telemetry",
       "displayName": "Heading",
-      "name": "PLANE_HEADING_TRUE",
+      "name": "PLANE_HEADING_DEGREES_TRUE",
       "description": "Heading relative to true north",
       "schema": "double"
     },
@@ -59,31 +50,6 @@
       "displayName": "Airspeed",
       "name": "AIRSPEED_INDICATED",
       "schema": "integer"
-    },
-    {
-      "@type": "Telemetry",
-      "displayName": "EngineHydraulicFluid",
-      "name": "ENG_HYDRAULIC_QUANTITY",
-      "schema": "integer"
-    },
-    {
-      "@type": "Telemetry",
-      "displayName": "EngineOilTemperature",
-      "name": "ENG_OIL_TEMPERATURE",
-      "schema": "integer"
-    },
-    {
-      "@type": "Telemetry",
-      "displayName": "CurrentFuelQuantity",
-      "name": "FUEL_TOTAL_QUANTITY",
-      "schema": "double"
-    },
-    {
-      "@type": "Property",
-      "displayName": "EngineFailure",
-      "name": "GENERAL_ENG_FAILED",
-      "schema": "boolean",
-      "writable": true
     }
   ],
   "@context": "dtmi:dtdl:context;2"
