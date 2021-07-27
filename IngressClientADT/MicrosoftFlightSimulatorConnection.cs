@@ -30,6 +30,7 @@ namespace IngressClientADT
             public DEFINITION Def = DEFINITION.Dummy;
             public REQUEST Request = REQUEST.Dummy;
             public string Name { get; set; }
+            public string DTDLName { get; set; }
             public bool IsString { get; set; }
             public double Value = 0.0;
             public string sValue = null;
@@ -200,7 +201,7 @@ namespace IngressClientADT
             return (retryCounter > 0);
         }
 
-        private void AddRequest(string simvarRequest, string newUnitRequest, bool isString, Aircraft aircraft)
+        private void AddRequest(string simvarRequest, string newUnitRequest, bool isString, Aircraft aircraft, string dtdlName)
         {
             Console.ForegroundColor = ConsoleColor.White;
             Console.WriteLine($"Adding Request {simvarRequest}");
@@ -212,7 +213,8 @@ namespace IngressClientADT
                 Name = simvarRequest,
                 IsString = isString,
                 Units = isString ? null : newUnitRequest,
-                Twin = aircraft
+                Twin = aircraft,
+                DTDLName = dtdlName
             };
 
             oSimvarRequest.Pending = !RegisterToSimConnect(oSimvarRequest);
@@ -233,12 +235,12 @@ namespace IngressClientADT
 
             Aircraft = new Aircraft("F151", "dtmi:com:adt:Aircraft;1");
 
-            AddRequest(RequestType.Pitch.Value, RequestUnit.Radians.Value, false, Aircraft);
-            AddRequest(RequestType.Altitude.Value, RequestUnit.Feet.Value, false, Aircraft);
-            AddRequest(RequestType.Heading.Value, RequestUnit.Radians.Value, false, Aircraft);
-            AddRequest(RequestType.Longitude.Value, RequestUnit.Radians.Value, false, Aircraft);
-            AddRequest(RequestType.Latitude.Value, RequestUnit.Radians.Value, false, Aircraft);
-            AddRequest(RequestType.Airspeed.Value, RequestUnit.Knots.Value, false, Aircraft);
+            AddRequest(RequestType.Pitch.Value, RequestUnit.Radians.Value, false, Aircraft, "Pitch");
+            AddRequest(RequestType.Altitude.Value, RequestUnit.Feet.Value, false, Aircraft, "Altitude");
+            AddRequest(RequestType.Heading.Value, RequestUnit.Radians.Value, false, Aircraft, "Heading");
+            AddRequest(RequestType.Longitude.Value, RequestUnit.Radians.Value, false, Aircraft, "Longitude");
+            AddRequest(RequestType.Latitude.Value, RequestUnit.Radians.Value, false, Aircraft, "Latitude");
+            AddRequest(RequestType.Airspeed.Value, RequestUnit.Knots.Value, false, Aircraft, "Airspeed");
 
             OnUserAircraftCreated?.Invoke(Aircraft);
 
@@ -391,8 +393,8 @@ namespace IngressClientADT
             }
 
             Dictionary<string, Object> telemetryPayload = new Dictionary<string, Object>();
-            telemetryPayload.Add("AIRCRAFT_ID", Aircraft.TwinId);
-            foreach (var request in Aircraft.AircraftTelemetryValues) { telemetryPayload.Add(request.Name.Replace(" ", "_"), request.Value); }
+            telemetryPayload.Add("Id", Aircraft.TwinId);
+            foreach (var request in Aircraft.AircraftTelemetryValues) { telemetryPayload.Add(request.DTDLName, request.Value); }
             OnSimulationObjectReceived(Aircraft, JsonSerializer.Serialize(telemetryPayload));
         }
     }

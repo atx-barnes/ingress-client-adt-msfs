@@ -6,49 +6,49 @@
     {
       "@type": "Telemetry",
       "displayName": "ID",
-      "name": "AIRCRAFT_ID",
+      "name": "Id",
       "description": "Aircraft ID",
       "schema": "integer"
     },
     {
       "@type": "Telemetry",
       "displayName": "Pitch",
-      "name": "PLANE_PITCH_DEGREES",
+      "name": "Pitch",
       "description": "Pitch angle",
       "schema": "double"
     },
     {
       "@type": "Telemetry",
       "displayName": "Altitude",
-      "name": "PLANE_ALTITUDE",
+      "name": "Altitude",
       "description": "Altitude of aircraft",
       "schema": "integer"
     },
     {
       "@type": "Telemetry",
       "displayName": "Heading",
-      "name": "PLANE_HEADING_DEGREES_TRUE",
+      "name": "Heading",
       "description": "Heading relative to true north",
       "schema": "double"
     },
     {
       "@type": "Telemetry",
       "displayName": "Longitude",
-      "name": "PLANE_LONGITUDE",
+      "name": "Longitude",
       "description": "Longitude of aircraft, East is positive, West negative",
       "schema": "double"
     },
     {
       "@type": "Telemetry",
       "displayName": "Latitude",
-      "name": "PLANE_LATITUDE",
+      "name": "Latitude",
       "description": "Latitude of aircraft, North is positive, South negative",
       "schema": "double"
     },
     {
       "@type": "Telemetry",
       "displayName": "Airspeed",
-      "name": "AIRSPEED_INDICATED",
+      "name": "Airspeed",
       "schema": "integer"
     }
   ],
