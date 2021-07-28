@@ -11,7 +11,7 @@ namespace IngressClientADT
             Console.WriteLine("Press Enter to Connect to MSFS2020...");
             Console.ReadLine();
 
-            MicrosoftFlightSimulatorConnection microsoftFlightSimulatorConnection = new MicrosoftFlightSimulatorConnection(2000);
+            MicrosoftFlightSimulatorConnection microsoftFlightSimulatorConnection = new MicrosoftFlightSimulatorConnection(500);
 
             microsoftFlightSimulatorConnection.Connect();
             microsoftFlightSimulatorConnection.OnUserAircraftCreated += digitalTwinController.StandupHandle;

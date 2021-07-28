@@ -47,6 +47,7 @@ namespace IngressClientADT
             public static readonly RequestType Longitude = new RequestType("PLANE LONGITUDE");
             public static readonly RequestType Latitude = new RequestType("PLANE LATITUDE");
             public static readonly RequestType Airspeed = new RequestType("AIRSPEED INDICATED");
+            public static readonly RequestType Bank = new RequestType("PLANE BANK DEGREES");
 
             private RequestType(string value)
             {
@@ -241,6 +242,7 @@ namespace IngressClientADT
             AddRequest(RequestType.Longitude.Value, RequestUnit.Radians.Value, false, Aircraft, "Longitude");
             AddRequest(RequestType.Latitude.Value, RequestUnit.Radians.Value, false, Aircraft, "Latitude");
             AddRequest(RequestType.Airspeed.Value, RequestUnit.Knots.Value, false, Aircraft, "Airspeed");
+            AddRequest(RequestType.Bank.Value, RequestUnit.Radians.Value, false, Aircraft, "Bank");
 
             OnUserAircraftCreated?.Invoke(Aircraft);
 
